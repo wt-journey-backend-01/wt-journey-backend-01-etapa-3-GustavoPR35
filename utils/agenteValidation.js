@@ -36,8 +36,8 @@ const agenteInputSchema = z.object({
   }).min(1, { message: 'Cargo não pode ser vazio.' })
 })
 
-// Schema para atualização total (PUT) - igual ao de criação
-const agentePutSchema = agenteInputSchema
+// Schema para atualização total (PUT) - igual ao de criação, mas rigoroso
+const agentePutSchema = agenteInputSchema.strict()
 
 // Schema para atualização parcial (PATCH) - todos campos opcionais, mas só permite os válidos
 const agentePatchSchema = z.object({

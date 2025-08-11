@@ -48,7 +48,7 @@ const casoInputSchema = z.object({
 })
 
 // Schema para atualização total (PUT) - igual ao de criação
-const casoPutSchema = casoInputSchema
+const casoPutSchema = casoInputSchema.strict()
 
 // Schema para atualização parcial (PATCH) - todos campos opcionais, mas só permite os válidos
 const casoPatchSchema = z.object({
