@@ -1,6 +1,6 @@
 <sup>Esse é um feedback gerado por IA, ele pode conter erros.</sup>
 
-Você tem 8 créditos restantes para usar o sistema de feedback AI.
+Você tem 7 créditos restantes para usar o sistema de feedback AI.
 
 # Feedback para GustavoPR35:
 
@@ -8,47 +8,53 @@ Nota final: **94.6/100**
 
 # Feedback para GustavoPR35 🚓🚀
 
-Olá Gustavo! Que jornada incrível você fez até aqui! 👏 Seu projeto está muito bem estruturado, e percebo que você dominou muito bem os conceitos fundamentais de uma API REST com Express.js e PostgreSQL usando Knex. Parabéns por ter conseguido entregar todos os requisitos obrigatórios com sucesso! 🎉
+Olá Gustavo! Primeiro, parabéns pelo empenho e pela estruturação do seu projeto! 🎉 Você fez um ótimo trabalho implementando a persistência com PostgreSQL e Knex.js, mantendo a modularidade com controllers, repositories e rotas. Isso mostra maturidade no desenvolvimento backend e atenção às boas práticas.
 
 ---
 
-## 🎉 Pontos Fortes que Merecem Destaque
+## 🎯 Pontos Fortes que Merecem Destaque
 
-- Você implementou corretamente as operações CRUD para os recursos `/agentes` e `/casos`, incluindo validações de dados e tratamento de erros com status codes adequados (400, 404, etc). Isso mostra que entendeu bem a importância da robustez da API.
-- A arquitetura modular está muito bem aplicada: separação clara entre rotas, controladores e repositórios, facilitando a manutenção e escalabilidade.
-- O uso do Knex está correto para consultas, inserções, atualizações e deleções, e suas migrations e seeds estão configuradas e executando conforme esperado.
-- Você aplicou a filtragem simples por status e agente nos casos, além de ordenar agentes pela data de incorporação, o que é um extra muito bacana! 👏
-- As mensagens de erro são claras e personalizadas, o que melhora a experiência de quem consome sua API.
-- A documentação Swagger está bem detalhada, ajudando a entender os endpoints e os formatos esperados.
+- **Organização do código:** Sua divisão em pastas (`controllers`, `repositories`, `routes`, `db`, `utils`) está muito bem feita e segue o padrão esperado para projetos Node.js com Express. Isso facilita a manutenção e escalabilidade do projeto.
+  
+- **Uso correto do Knex:** Vi que você configurou o `knexfile.js` para diferentes ambientes (development e ci), o que é ótimo para ambientes locais e de integração contínua.
+
+- **Migrations e Seeds:** Você criou e executou as migrations para as tabelas `agentes` e `casos` e populou com seeds, garantindo dados iniciais para testes e desenvolvimento.
+
+- **Validações e tratamento de erros:** O uso do Zod para validação dos dados e a criação de erros customizados (`APIError`) demonstram cuidado com a robustez da API.
+
+- **Implementação dos endpoints básicos:** Todos os métodos REST para `agentes` e `casos` estão implementados corretamente, com status codes apropriados (200, 201, 204, 400, 404).
+
+- **Extras bônus que funcionam:** Você conseguiu implementar a filtragem simples por status e agente nos casos, o que é um diferencial legal para a sua API!
 
 ---
 
-## 🕵️ Análise Profunda dos Pontos de Atenção
+## 🔍 Pontos de Atenção e Oportunidades de Aprendizado
 
-### 1. Penalidades: Permite alterar o ID do agente e do caso via PUT
+### 1. Penalidade: Consegue alterar o ID do agente e do caso via PUT
 
-Esse é um ponto muito importante, pois o ID é a chave primária do registro e deve ser imutável para garantir a integridade dos dados.
+**O que acontece?**
 
-No seu controller de agentes (`agentesController.js`), na função `putAgente`, você está validando o corpo da requisição e removendo explicitamente o campo `id` com este trecho:
+Vi no seu código do `putAgente` e `putCaso` que você está removendo o `id` do objeto vindo no body para evitar alteração da chave primária, mas isso não está funcionando como esperado, pois os testes indicam que o ID ainda pode ser alterado.
+
+Veja este trecho do seu controller de agentes:
 
 ```js
+const { id } = IDvalidation.data
+// Proteção explícita: remove qualquer 'id' que possa vir no body
 const { id: _, ...updatedFields } = bodyValidation.data
+
+// ...
+
+const updatedAgente = {
+    nome: updatedFields.nome,
+    dataDeIncorporacao: updatedFields.dataDeIncorporacao,
+    cargo: updatedFields.cargo
+}
+
+const updated = await agentesRepository.update(id, updatedAgente)
 ```
 
-Isso é ótimo! Porém, a penalidade indica que ainda é possível alterar o ID via PUT. Isso sugere que, apesar da remoção no controller, o repositório pode estar aceitando o campo `id` e atualizando o banco.
-
-**Olhando no seu `agentesRepository.js`, na função `update`, você faz:**
-
-```js
-const updated = await db('agentes').where({id: id}).update(updatedObject, ["*"])
-```
-
-Aqui o objeto `updatedObject` pode conter o campo `id` se ele não for removido antes.
-
-**Solução recomendada:**
-
-- Garanta que o objeto `updatedObject` passado para o repositório **nunca contenha o campo `id`**. Você já faz isso no controller, mas vale reforçar e verificar se em algum outro lugar não está passando o `id`.
-- Para reforçar, você pode fazer uma proteção extra no repository, removendo o `id` antes de atualizar, por exemplo:
+E no repositório:
 
 ```js
 async function update(id, updatedObject) {
@@ -71,160 +77,188 @@ async function update(id, updatedObject) {
 }
 ```
 
-Faça o mesmo para o `casosRepository.js`.
+**Por que isso pode estar acontecendo?**
+
+- Mesmo removendo o `id` do objeto atualizado, se o schema Zod aceitar um campo `id` no payload, ele pode estar chegando no controller e sendo usado de alguma forma.
+
+- Ou o objeto que você passa para o update contém o campo `id` em algum momento, talvez por spread operator ou outra manipulação.
+
+**Como corrigir?**
+
+- Garanta que o schema Zod para o PUT **não permita** o campo `id` no corpo da requisição. Isso vai impedir que o cliente envie esse campo.
+
+- No controller, além de remover o `id` do body, valide explicitamente que o campo `id` **não está presente** no payload. Caso esteja, retorne erro 400.
+
+- No repositório, continue removendo o `id` para garantir que o banco não será afetado.
+
+Exemplo de ajuste no schema Zod (em `agenteValidation.js` e `casoValidation.js`):
+
+```js
+const agentePutSchema = z.object({
+  nome: z.string(),
+  dataDeIncorporacao: z.string(),
+  cargo: z.string(),
+}).strict() // strict não permite campos extras como 'id'
+```
+
+No controller, valide o body com esse schema e rejeite se `id` estiver presente.
 
 ---
 
-### 2. Testes Bônus Falharam: Endpoints avançados não estão funcionando
+### 2. Falha nos testes bônus de endpoints avançados
 
-Você implementou os filtros simples e ordenação, mas alguns endpoints bônus como:
+Você não passou alguns testes bônus importantes, como:
 
-- Buscar agente responsável por um caso (`GET /casos/:id/agente`)
-- Buscar casos por keywords no título e descrição (`GET /casos/search`)
-- Filtrar casos do agente
-- Ordenação complexa de agentes por data de incorporação
+- Busca do agente responsável pelo caso (`GET /casos/:id/agente`)
+- Busca de casos por palavras-chave no título/descrição (`GET /casos/search`)
+- Ordenação e filtragem avançada de agentes por data de incorporação com sort
 
-não passaram.
+**Análise do código:**
 
-**Analisando seu código:**
+- A rota `/casos/:id/agente` está declarada corretamente em `casosRoutes.js`, e o controller `getAgenteByCaso` parece implementado.
 
-- A rota `/casos/:id/agente` está declarada corretamente no `casosRoutes.js`:
+- No controller, a função `getAgenteByCaso` busca o caso e depois o agente. Isso está correto.
 
-```js
-router.get('/:id/agente', casosController.getAgenteByCaso)
-```
+- Para o endpoint de busca por termos (`searchInCaso`), você implementou o método no repository usando `.where('titulo', 'ilike', `%${termo}%`).orWhere('descricao', 'ilike', `%${termo}%`)`, que é adequado para PostgreSQL.
 
-- E o controller `getAgenteByCaso` está implementado:
+- O problema mais provável para a falha aqui é na ordem das rotas no arquivo `casosRoutes.js`. Rotas com parâmetros dinâmicos (`/:id`) devem vir depois das rotas estáticas (`/search` e `/:id/agente`), para que o Express não interprete `/search` como um `id` inválido.
 
-```js
-async function getAgenteByCaso(req, res, next) {
-    // ...
-    const agente = await agentesRepository.select({ id: casoExists.agente_id })
-    // ...
-}
-```
-
-No entanto, o problema pode estar no repositório `agentesRepository.select()`.
-
-**Verifique o seguinte:**
-
-No seu repositório `agentesRepository.js`, a função `select` faz:
+**Verifique a ordem das rotas em `casosRoutes.js`:**
 
 ```js
-if (Object.keys(query).length > 0) {
-    queryBuilder = queryBuilder.where(query)
-}
+router.get('/search', casosController.searchInCaso) // está antes da rota /casos/:id - correto
+
+router.get('/:id/agente', casosController.getAgenteByCaso) // está antes da rota /casos/:id - correto
+
+router.get('/:id', casosController.getCasoById)
 ```
 
-O método `.where(query)` espera um objeto simples, mas quando você passa `{ id: 1 }`, isso funciona. Porém, se for passado `{ agente_id: 1 }` ou outras queries mais complexas, pode falhar.
+Está correto, então o problema pode estar na validação dos parâmetros ou no tratamento do resultado.
 
-**Dica:** Para garantir que consultas com múltiplos filtros funcionem bem, você pode usar `.where()` com callbacks ou construir a query dinamicamente.
+**Recomendo:**
 
-Além disso, para o endpoint de busca por keywords (`searchTermo` em `casosRepository.js`), seu código está assim:
+- Garantir que os schemas de validação para IDs estão funcionando corretamente.
 
-```js
-const casos = await db('casos')
-    .where('titulo', 'ilike', `%${termo}%`)
-    .orWhere('descricao', 'ilike', `%${termo}%`)
-```
+- Verificar se os dados de seed estão sendo inseridos corretamente no banco, para que as buscas retornem resultados.
 
-Isso está correto, mas garanta que o parâmetro `q` da query está chegando corretamente e que o endpoint está sendo chamado.
+- Testar manualmente esses endpoints com ferramentas como Postman ou Insomnia para confirmar o comportamento.
 
 ---
 
-### 3. Ordenação de agentes por data de incorporação (complexa)
+### 3. Validação de parâmetros e mensagens customizadas
 
-Você implementou a ordenação simples no `agentesRepository.js`:
+Os testes bônus indicam que faltam mensagens customizadas para erros de IDs inválidos em agentes e casos.
+
+Você tem a classe `APIError` e usa Zod para validação, o que é ótimo.
+
+Porém, notei que em alguns controllers você retorna erro 400 com mensagens genéricas, por exemplo:
 
 ```js
-if (sort) {
-    const direction = sort.startsWith('-') ? 'desc' : 'asc'
-    const column = sort.replace('-', '')
-    queryBuilder = queryBuilder.orderBy(column, direction)
+if (!validation.success) {
+    return next(new APIError(400, 'O ID fornecido para o agente é inválido. Certifique-se de usar um ID válido.'))
 }
 ```
 
-Isso é ótimo! Porém, a penalidade indica que a ordenação complexa (asc e desc) não está funcionando 100%. Pode ser que o parâmetro `sort` não esteja chegando corretamente ou que a validação no controller esteja bloqueando algum valor.
-
-No controller `getAllAgentes`:
-
-```js
-if (sort && !['dataDeIncorporacao', '-dataDeIncorporacao'].includes(sort)) {
-    return next(new APIError(400, 'Parâmetro sort deve ser "dataDeIncorporacao" ou "-dataDeIncorporacao"'))
-}
-```
-
-Aqui você está validando corretamente, então o problema pode estar no frontend/teste que está enviando o parâmetro errado, ou na forma como o banco interpreta a coluna `dataDeIncorporacao`.
-
-**Dica:** Verifique se a coluna `dataDeIncorporacao` está com o nome correto no banco e se o Knex está mapeando corretamente. Também valide se a query está chegando ao banco conforme esperado.
+Isso está correto, mas certifique-se de que todas as rotas seguem esse padrão e que o middleware `errorHandler` está tratando o erro para retornar essa mensagem no JSON.
 
 ---
 
-### 4. Arquitetura e Estrutura de Diretórios
+### 4. Estrutura de diretórios está correta, parabéns!
 
-Sua estrutura de diretórios está alinhada com o esperado! Excelente organização 👏
+Sua estrutura segue o padrão esperado:
 
 ```
 .
 ├── controllers/
-│   ├── agentesController.js
-│   └── casosController.js
 ├── db/
 │   ├── migrations/
 │   ├── seeds/
 │   └── db.js
 ├── repositories/
-│   ├── agentesRepository.js
-│   └── casosRepository.js
 ├── routes/
-│   ├── agentesRoutes.js
-│   └── casosRoutes.js
 ├── utils/
-│   └── errorHandler.js
 ├── knexfile.js
 ├── package.json
 ├── server.js
 ```
 
-Isso é muito importante para manter o projeto escalável e fácil de entender!
+Isso é fundamental para manter o projeto organizado e facilitar o entendimento para outros devs.
 
 ---
 
-## 📚 Recomendações de Estudo para Você
+## 📚 Recomendações de Estudo
 
-- Para reforçar o uso correto do Knex e evitar problemas na construção das queries, confira o guia oficial do Knex Query Builder:  
+- Para fixar a questão da validação e impedir alteração de IDs no payload, recomendo este vídeo sobre validação de dados e tratamento de erros em APIs Node.js/Express:  
+  https://youtu.be/yNDCRAz7CM8?si=Lh5u3j27j_a4w3A_
+
+- Para entender melhor como usar o Knex.js, especialmente para queries de update e evitar bugs ao manipular objetos, veja a documentação oficial:  
   https://knexjs.org/guide/query-builder.html
 
-- Para garantir que suas migrations e seeds estejam configuradas corretamente, e entender melhor seu versionamento, recomendo estudar as migrations no Knex:  
-  https://knexjs.org/guide/migrations.html
-
-- Sobre validação e tratamento de erros HTTP (400 e 404), veja este conteúdo que explica como estruturar respostas de erro customizadas:  
-  https://developer.mozilla.org/pt-BR/docs/Web/HTTP/Status/400  
-  https://developer.mozilla.org/pt-BR/docs/Web/HTTP/Status/404
-
-- Para aprofundar na arquitetura MVC e organização de projetos Node.js, este vídeo é excelente:  
+- Caso queira reforçar a organização do projeto com arquitetura MVC, este vídeo é muito bom:  
   https://youtu.be/bGN_xNc4A1k?si=Nj38J_8RpgsdQ-QH
 
-- Se quiser entender melhor a manipulação de requisições e status codes no Express, este vídeo ajuda bastante:  
-  https://youtu.be/RSZHvQomeKE
+- E para garantir que o ambiente do banco está configurado corretamente, veja este tutorial sobre Docker com PostgreSQL e Node.js:  
+  http://googleusercontent.com/youtube.com/docker-postgresql-node
 
 ---
 
-## 📝 Resumo dos Principais Pontos para Focar
+## 📝 Resumo Rápido para Melhorias
 
-- **Proteja o campo `id` para que não possa ser alterado via PUT ou PATCH**, tanto no controller quanto no repository (removendo o campo antes de atualizar).
-- **Revise a função `select` nos repositories para garantir que consultas com filtros complexos funcionem corretamente.** Use consultas dinâmicas e evite passar objetos que possam gerar erros.
-- **Confirme que a ordenação por `dataDeIncorporacao` está funcionando corretamente** e que o parâmetro `sort` está sendo recebido e usado corretamente.
-- **Garanta que os endpoints bônus estejam funcionando**, especialmente os que envolvem busca por keywords e busca do agente responsável pelo caso.
-- Continue mantendo a arquitetura modular e o código limpo, com validações e tratamento de erros personalizados.
+- [ ] Ajustar schemas Zod para **não permitir o campo `id` no corpo das requisições PUT/PATCH** para agentes e casos.  
+- [ ] No controller, validar explicitamente que o `id` não está presente no payload de atualização e retornar erro 400 se estiver.  
+- [ ] Revisar a implementação dos endpoints bônus, especialmente o `GET /casos/:id/agente` e busca por termos, testando manualmente para garantir que funcionam.  
+- [ ] Garantir mensagens de erro customizadas consistentes para IDs inválidos em todos os endpoints.  
+- [ ] Testar o fluxo completo de atualização para confirmar que o ID não é alterado no banco.  
 
 ---
 
-Gustavo, você está no caminho certo! 🚀 Seu código mostra que você entendeu os conceitos principais e já aplicou muitos deles muito bem. Com pequenos ajustes, sua API ficará ainda mais robusta e completa.
+## Finalizando 🚀
 
-Continue firme, e se precisar, volte a estudar os recursos que indiquei para consolidar seu conhecimento. Estou aqui torcendo pelo seu sucesso! 💪👊
+Gustavo, você está muito próximo da perfeição! Seu código está bem organizado, e a maioria das funcionalidades essenciais está implementada com qualidade. Os pontos que precisam de ajuste são detalhes que, uma vez corrigidos, vão deixar sua API ainda mais robusta e profissional.
 
-Abraço forte e até a próxima revisão! 👮‍♂️✨
+Continue assim, revisando com calma as validações e testando manualmente os endpoints para garantir que tudo está funcionando como esperado. Você está no caminho certo para se tornar um expert em backend com Node.js e PostgreSQL! 💪✨
+
+Se precisar de ajuda para entender algum ponto específico, estou por aqui para te guiar! 😉
+
+Abraço forte e bons códigos! 👨‍💻👩‍💻
+
+---
+
+# Código exemplo para proteger o ID na atualização (controller):
+
+```js
+// Exemplo para PUT agente
+async function putAgente(req, res, next) {
+    try {
+        // Validar ID do parâmetro
+        const IDvalidation = agenteIdSchema.safeParse({ id: req.params.id })
+        if (!IDvalidation.success) {
+            return next(new APIError(400, 'O ID fornecido para o agente é inválido.'))
+        }
+
+        // Validar body sem permitir 'id'
+        if ('id' in req.body) {
+            return res.status(400).json({
+                status: 400,
+                message: 'O campo "id" não pode ser alterado.'
+            })
+        }
+
+        const bodyValidation = agentePutSchema.safeParse(req.body)
+        if (!bodyValidation.success) {
+            // tratar erros ...
+        }
+
+        // resto do código
+    } catch (error) {
+        next(error)
+    }
+}
+```
+
+---
+
+Continue firme, Gustavo! Seu esforço e dedicação são inspiradores! 🚀✨
 
 > Caso queira tirar uma dúvida específica, entre em contato com o Chapter no nosso [discord](https://discord.gg/DryuHVnz).
 
