@@ -37,8 +37,10 @@ async function insert(object) {
 
 async function update(id, updatedObject) {
     try {
+        // Remove id do objeto para evitar alteração da chave primária
+        const { id: _, ...dataToUpdate } = updatedObject
 
-        const updated = await db('casos').where({id: id}).update(updatedObject, ["*"])
+        const updated = await db('casos').where({id: id}).update(dataToUpdate, ["*"])
 
         if (!updated) {
             return false
