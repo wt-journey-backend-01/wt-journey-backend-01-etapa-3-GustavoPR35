@@ -1,9 +1,22 @@
 const db = require('../db/db')
 
-async function select(query = {}) {
+async function select(query = {}, sort = null) {
     try {
+        let queryBuilder = db('agentes')
 
-        const selected = await db('agentes').where(query)
+        // Aplicar filtros
+        if (Object.keys(query).length > 0) {
+            queryBuilder = queryBuilder.where(query)
+        }
+
+        // Aplicar ordenação
+        if (sort) {
+            const direction = sort.startsWith('-') ? 'desc' : 'asc'
+            const column = sort.replace('-', '')
+            queryBuilder = queryBuilder.orderBy(column, direction)
+        }
+
+        const selected = await queryBuilder.select()
         const isSingular = Object.keys(query).length === 1 && 'id' in query
 
         if (!selected) {

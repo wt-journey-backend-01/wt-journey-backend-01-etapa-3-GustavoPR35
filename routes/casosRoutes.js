@@ -115,14 +115,14 @@ const casosController = require('../controllers/casosController')
  *           type: integer
  *           minimum: 1
  *         required: false
- *         description: Lista todos os casos atribuídos à um agente específico
+ *         description: ID de um agente específico
  *       - in: query
  *         name: status
  *         schema:
  *           type: string
  *           enum: [aberto, solucionado]
  *         required: false
- *         description: Filtra casos por status
+ *         description: Status dos casos, que pode ser aberto ou solucionado
  *     responses:
  *       200:
  *         description: Lista de casos retornada com sucesso
@@ -152,7 +152,7 @@ router.get('/', casosController.getAllCasos)
  *         description: Termos de pesquisa
  *     responses:
  *       200:
- *         description: Retorna casos que possuem os termos de pesquisa no título ou descrição
+ *         description: Casos que possuem os termos de pesquisa no título ou descrição retornados com sucesso
  *         content:
  *           application/json:
  *             schema:
@@ -180,7 +180,7 @@ router.get('/search', casosController.searchInCaso) // rota /casos/search está 
  *         description: ID do caso
  *     responses:
  *       200:
- *         description: retorna agente responsável pelo caso
+ *         description: Agente responsável pelo caso retornado com sucesso
  *         content:
  *           application/json:
  *             schema:

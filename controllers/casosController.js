@@ -2,6 +2,7 @@ const casosRepository = require('../repositories/casosRepository')
 const agentesRepository = require('../repositories/agentesRepository')
 const { casoInputSchema, casoPutSchema, casoPatchSchema, casoIdSchema } = require('../utils/casoValidation')
 const { agenteIdSchema } = require('../utils/agenteValidation')
+const { formatAgenteWithSafeDate } = require('../utils/dateFormatter')
 
 class APIError extends Error {
     constructor(status, message) {
@@ -21,7 +22,7 @@ async function getAllCasos(req, res, next) {
         if (agente_id) {
             const agentValidation = agenteIdSchema.safeParse({ id: agente_id })
             if (!agentValidation.success) {
-                return next(new APIError(400, 'O ID fornecido para o agente é inválido. Certifique-se de usar um UUID válido.'))
+                return next(new APIError(400, 'O ID fornecido para o agente é inválido. Certifique-se de usar um ID válido.'))
             }
             query.agente_id = agentValidation.data.id
         }
@@ -46,7 +47,7 @@ async function getCasoById(req, res, next) {
     try {
         const validation = casoIdSchema.safeParse({ id: req.params.id })
         if (!validation.success) {
-            return next(new APIError(400, 'O ID fornecido para o caso é inválido. Certifique-se de usar um UUID válido.'))
+            return next(new APIError(400, 'O ID fornecido para o caso é inválido. Certifique-se de usar um ID válido.'))
         }
         
         const { id } = validation.data
@@ -67,7 +68,7 @@ async function getAgenteByCaso(req, res, next) {
     try {
         const validation = casoIdSchema.safeParse({ id: req.params.id })
         if (!validation.success) {
-            return next(new APIError(400, 'O ID fornecido para o caso é inválido. Certifique-se de usar um UUID válido.'))
+            return next(new APIError(400, 'O ID fornecido para o caso é inválido. Certifique-se de usar um ID válido.'))
         }
         
         const { id } = validation.data
@@ -82,11 +83,8 @@ async function getAgenteByCaso(req, res, next) {
             return next(new APIError(404, 'Agente não encontrado.'))
         }
 
-        // Formatar data
-        const agenteFormatado = {
-            ...agente,
-            dataDeIncorporacao: agente.dataDeIncorporacao.toISOString().split('T')[0]
-        }
+        // Formatar data de forma segura
+        const agenteFormatado = formatAgenteWithSafeDate(agente)
 
         res.status(200).json(agenteFormatado)
     } catch (error) {
@@ -155,7 +153,7 @@ async function putCaso(req, res, next) {
     try {
         const IDvalidation = casoIdSchema.safeParse({ id: req.params.id })
         if (!IDvalidation.success) {
-            return next(new APIError(400, 'O ID fornecido para o caso é inválido. Certifique-se de usar um UUID válido.'))
+            return next(new APIError(400, 'O ID fornecido para o caso é inválido. Certifique-se de usar um ID válido.'))
         }
 
         const bodyValidation = casoPutSchema.safeParse(req.body)
@@ -173,23 +171,24 @@ async function putCaso(req, res, next) {
         }
         
         const { id } = IDvalidation.data
-        const { titulo, descricao, status, agente_id } = bodyValidation.data
+        // Proteção explícita: remove qualquer 'id' que possa vir no body
+        const { id: _, ...updatedFields } = bodyValidation.data
     
         const casoExists = await casosRepository.select({ id: id })
         if (!casoExists) {
             return next(new APIError(404, 'Caso não encontrado.'))
         }
     
-        const agenteExists = await agentesRepository.select({ id: agente_id })
+        const agenteExists = await agentesRepository.select({ id: updatedFields.agente_id })
         if (!agenteExists) {
             return next(new APIError(404, 'Agente não encontrado.'))
         }
     
         const casoUpdate = {
-            titulo,
-            descricao,
-            status,
-            agente_id
+            titulo: updatedFields.titulo,
+            descricao: updatedFields.descricao,
+            status: updatedFields.status,
+            agente_id: updatedFields.agente_id
         }
 
         const updated = await casosRepository.update(id, casoUpdate)
@@ -205,7 +204,7 @@ async function patchCaso(req, res, next) {
     try {
         const IDvalidation = casoIdSchema.safeParse({ id: req.params.id })
         if (!IDvalidation.success) {
-            return next(new APIError(400, 'O ID fornecido para o caso é inválido. Certifique-se de usar um UUID válido.'))
+            return next(new APIError(400, 'O ID fornecido para o caso é inválido. Certifique-se de usar um ID válido.'))
         }
 
         const bodyValidation = casoPatchSchema.safeParse(req.body)
@@ -234,7 +233,8 @@ async function patchCaso(req, res, next) {
         }
         
         const { id } = IDvalidation.data
-        const updateData = bodyValidation.data
+        // Proteção explícita: remove qualquer 'id' que possa vir no body
+        const { id: _, ...updateData } = bodyValidation.data
     
         const casoExists = await casosRepository.select({ id: id })
         if (!casoExists) {
@@ -248,11 +248,13 @@ async function patchCaso(req, res, next) {
             }
         }
     
+        // Mescla apenas os campos permitidos (sem ID)
         const casoUpdate = {
-            ...casoExists,
-            ...updateData,
+            titulo: updateData.titulo ?? casoExists.titulo,
+            descricao: updateData.descricao ?? casoExists.descricao,
+            status: updateData.status ?? casoExists.status,
+            agente_id: updateData.agente_id ?? casoExists.agente_id
         }
-        delete casoUpdate.id
 
         const updated = await casosRepository.update(id, casoUpdate)
 
@@ -267,7 +269,7 @@ async function deleteCaso(req, res, next) {
     try {
         const validation = casoIdSchema.safeParse({ id: req.params.id })
         if (!validation.success) {
-            return next(new APIError(400, 'O ID fornecido para o caso é inválido. Certifique-se de usar um UUID válido.'))
+            return next(new APIError(400, 'O ID fornecido para o caso é inválido. Certifique-se de usar um ID válido.'))
         }
         
         const { id } = validation.data

@@ -1,5 +1,6 @@
 const agentesRepository = require('../repositories/agentesRepository')
 const { agenteInputSchema, agentePutSchema, agentePatchSchema, agenteIdSchema } = require('../utils/agenteValidation')
+const { formatAgenteWithSafeDate } = require('../utils/dateFormatter')
 
 class APIError extends Error {
     constructor(status, message) {
@@ -14,35 +15,24 @@ async function getAllAgentes(req, res, next) {
     try {
         const { cargo, sort } = req.query
 
-        const query = {}
-
-        if (cargo) {
-            query.cargo = cargo
-        }
-
-        let agentes = await agentesRepository.select(query)
-    
+        // Validar parâmetro sort
         if (sort && !['dataDeIncorporacao', '-dataDeIncorporacao'].includes(sort)) {
             return next(new APIError(400, 'Parâmetro sort deve ser "dataDeIncorporacao" ou "-dataDeIncorporacao"'))
         }
 
-        if (sort && ['dataDeIncorporacao', '-dataDeIncorporacao'].includes(sort)) {
-            const agentesCopy = agentes.slice()
-            agentesCopy.sort((a, b) => {
-                const dateA = new Date(a.dataDeIncorporacao).getTime()
-                const dateB = new Date(b.dataDeIncorporacao).getTime()
-                return sort === 'dataDeIncorporacao' ? dateA - dateB : dateB - dateA
-            })
-            agentes = agentesCopy
+        // Montar query para filtros
+        const query = {}
+        if (cargo) {
+            query.cargo = cargo
         }
 
-        // Formatar datas
+        // Buscar agentes com ordenação no banco
+        let agentes = await agentesRepository.select(query, sort)
+
+        // Formatar datas de forma segura
         let agentesFormatados = []
         if (agentes) {
-            agentesFormatados = agentes.map(agente => ({
-                ...agente,
-                dataDeIncorporacao: agente.dataDeIncorporacao.toISOString().split('T')[0]
-            }))
+            agentesFormatados = agentes.map(agente => formatAgenteWithSafeDate(agente))
         }
 
         res.status(200).json(agentesFormatados)
@@ -66,11 +56,8 @@ async function getAgenteById(req, res, next) {
             return next(new APIError(404, 'Agente não encontrado.'))
         }
     
-        // Formatar data
-        const agenteFormatado = {
-            ...agente,
-            dataDeIncorporacao: agente.dataDeIncorporacao.toISOString().split('T')[0]
-        }
+        // Formatar data de forma segura
+        const agenteFormatado = formatAgenteWithSafeDate(agente)
 
         res.status(200).json(agenteFormatado)
     } catch (error) {
@@ -105,13 +92,10 @@ async function insertAgente(req, res, next) {
 
         const created = await agentesRepository.insert(agente)
 
-        // Formatar data
+        // Formatar data de forma segura
         let agenteFormatado = {}
         if (created) {
-            agenteFormatado = {
-                ...created,
-                dataDeIncorporacao: created.dataDeIncorporacao.toISOString().split('T')[0]
-            }
+            agenteFormatado = formatAgenteWithSafeDate(created)
         }
 
         res.status(201).json(agenteFormatado)
@@ -125,7 +109,7 @@ async function putAgente(req, res, next) {
     try {
         const IDvalidation = agenteIdSchema.safeParse({ id: req.params.id })
         if (!IDvalidation.success) {
-            return next(new APIError(400, 'O ID fornecido para o agente é inválido. Certifique-se de usar um UUID válido.'))
+            return next(new APIError(400, 'O ID fornecido para o agente é inválido. Certifique-se de usar um ID válido.'))
         }
         
         const bodyValidation = agentePutSchema.safeParse(req.body)
@@ -143,7 +127,8 @@ async function putAgente(req, res, next) {
         }
 
         const { id } = IDvalidation.data
-        const { nome, dataDeIncorporacao, cargo } = bodyValidation.data
+        // Proteção explícita: remove qualquer 'id' que possa vir no body
+        const { id: _, ...updatedFields } = bodyValidation.data
     
         const agenteExists = await agentesRepository.select({ id: id })
         if (!agenteExists) {
@@ -151,20 +136,17 @@ async function putAgente(req, res, next) {
         }
     
         const updatedAgente = {
-            nome,
-            dataDeIncorporacao,
-            cargo
+            nome: updatedFields.nome,
+            dataDeIncorporacao: updatedFields.dataDeIncorporacao,
+            cargo: updatedFields.cargo
         }
 
         const updated = await agentesRepository.update(id, updatedAgente)
 
-        // Formatar data
+        // Formatar data de forma segura
         let agenteFormatado = {}
         if (updated) {
-            agenteFormatado = {
-                ...updated,
-                dataDeIncorporacao: updated.dataDeIncorporacao.toISOString().split('T')[0]
-            }
+            agenteFormatado = formatAgenteWithSafeDate(updated)
         }
 
         res.status(200).json(agenteFormatado)
@@ -178,7 +160,7 @@ async function patchAgente(req, res, next) {
     try {
         const IDvalidation = agenteIdSchema.safeParse({ id: req.params.id })
         if (!IDvalidation.success) {
-            return next(new APIError(400, 'O ID fornecido para o agente é inválido. Certifique-se de usar um UUID válido.'))
+            return next(new APIError(400, 'O ID fornecido para o agente é inválido. Certifique-se de usar um ID válido.'))
         }
 
         const bodyValidation = agentePatchSchema.safeParse(req.body)
@@ -221,13 +203,10 @@ async function patchAgente(req, res, next) {
 
         const updated = await agentesRepository.update(id, updatedAgente)
 
-        // Formatar data
+        // Formatar data de forma segura
         let agenteFormatado = {}
         if (updated) {
-            agenteFormatado = {
-                ...updated,
-                dataDeIncorporacao: updated.dataDeIncorporacao.toISOString().split('T')[0]
-            }
+            agenteFormatado = formatAgenteWithSafeDate(updated)
         }
 
         res.status(200).json(agenteFormatado)
@@ -241,7 +220,7 @@ async function deleteAgente(req, res, next) {
     try {
         const validation = agenteIdSchema.safeParse({ id: req.params.id })
         if (!validation.success) {
-            return next(new APIError(400, 'O ID fornecido para o agente é inválido. Certifique-se de usar um UUID válido.'))
+            return next(new APIError(400, 'O ID fornecido para o agente é inválido. Certifique-se de usar um ID válido.'))
         }
 
         const { id } = validation.data
